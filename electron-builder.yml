@@ -1,0 +1,15 @@
+appId: com.example.myapp
+productName: Dijkstra - Kel.3
+directories:
+  output: "./dist"
+files:
+  - "**/*"
+extraResources:
+  - "path/to/extra/resource"
+win:
+  target: [
+    {
+      target: "nsis",
+      arch: ["x64"]
+    }
+  ]

@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dijkstra</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="container">
+        <div class="columns">
+            <div class="column">
+                <div class="form" id="dijkstraForm" style="align-content: center;">
+                    <h3 style="text-align: justify;">Dijkstra Algorithm</h3>
+                    <hr align="left" width="90%" size="5" color="black">
+                    <br><label for="nodeInput">Node:</label>
+                    <br><button onclick="addNode()">ADD</button>
+                    <button onclick="setMode('move')">MOVE</button>
+  
+                    <br><br><label for="edge">Edges:</label>
+                    <br><button onclick="setMode('edge')">ADD</button>
+
+                    <br><br><br><label style="text-align: left; font-weight: bold;">Calculate the nearest path:</label>
+                    <br><label for="startNode">Start Node:</label>
+                    <input type="text" id="startNode" name="startNode" style="width: 30px;" value="a">
+                    <br><label for="endNode">End Node:</label>
+                    <input type="text" id="endNode" name="endNode" style="width: 30px;" value="c">
+                    <br><br><button onclick="runDijkstra()" type="button" style="background-color: #9F5C64; width: 120px; height: 35px; font-size: 9pt;">RUN PROGRAM</button>
+                </div>
+            </div>
+            <div class="column">
+                    <canvas id="canvas" width="400" height="400"></canvas>
+            </div>
+        </div>
+    </div>
+    </div>
+    <!-- menambahkan popup notif -->
+    <div id="popupNotif" class="notif">
+        <div class="notif-content" style="background-color: #a7c3d7;">
+            <span class="close">&times;</span>
+            <p id="notifText"></p>
+            <input type="text" id="notifInput" style="display: none;">
+            <button id="notifButton" style="display: none;margin-top: 10px; ">Submit</button>
+        </div>
+    </div>
+  
+    <script>
+        //menyimpan nilai yang diinput
+        let inputValue = null; 
+  
+        //menampilkan notif dengan pesan
+        function showNotif(message, input = false) {
+            const notif = document.getElementById('popupNotif');
+            const notifText = document.getElementById('notifText');
+            const notifInput = document.getElementById('notifInput');
+            const notifButton = document.getElementById('notifButton');
+  
+            notifText.textContent = message;
+            if (input) {
+                notifInput.style.display = 'block';
+                notifButton.style.display = 'block';
+            } else {
+                notifInput.style.display = 'none';
+                notifButton.style.display = 'none';
+            }
+            
+            notif.style.display = 'block';
+  
+            notifButton.onclick = function() {
+                const newValue = notifInput.value;
+                if (newValue.trim() !== '') {
+                    // menyimpan nilai yang diinput
+                    inputValue = newValue; 
+                    notif.style.display = 'none';
+                } else {
+                    showNotif('Please input a valid value.');
+                }
+            }
+  
+            // menutup notif saat tombol close ditekan
+            const closeBtn = document.getElementsByClassName('close')[0];
+            closeBtn.onclick = function() {
+                notif.style.display = 'none';
+            }
+        }
+
+        //menampilkan popup notif untuk input perubahan distance dan mengembalikan nilai yang diinput
+        function notifChangeDistance(message,clickedEdgeIndex) {
+            document.getElementById('notifInput').value = null;
+            showNotif(message, true);
+            const notifButton = document.getElementById('notifButton');
+            notifButton.textContent = 'Submit';
+            notifButton.style.display = 'block';
+            // mereturn nilai yang diinput saat notif ditutup
+            return new Promise((resolve, reject) => {
+            notifButton.onclick = function() {
+                if (document.getElementById('notifInput').value !== null) {
+                    const newValue = document.getElementById('notifInput').value;
+                    if (newValue !== null && newValue.trim() !== '') {
+                        vertices[clickedEdgeIndex.from].edgeValues[clickedEdgeIndex.to] = parseInt(newValue);
+                        draw();
+                        document.getElementById('popupNotif').style.display = 'none';
+                    }
+                } else { }
+            }
+            });
+        }
+    
+        //menampilkan popup notif untuk input distance dan mengembalikan nilai yang diinput
+        function notifInputDistance(message,edgeStart,endNode) {
+            document.getElementById('notifInput').value = null;
+            showNotif(message, true);
+            const notifButton = document.getElementById('notifButton');
+            notifButton.textContent = 'Submit';
+            notifButton.style.display = 'block';
+            // mereturn nilai yang diinput ketika notif ditutup
+            return new Promise((resolve, reject) => {
+              notifButton.onclick = function() {
+                if (document.getElementById('notifInput').value !== null) {
+                    const value = document.getElementById('notifInput').value;
+                    if (value !== null && value.trim() !== '') {
+                        vertices[edgeStart].edges.push(endNode);
+                        vertices[edgeStart].edgeValues.push(parseInt(value));
+                        draw();
+                        document.getElementById('popupNotif').style.display = 'none';
+                    }
+                } else {
+                    reject('Invalid Value');
+                }
+              }
+            });
+        }
+    </script>
+  
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let nodeCount = 3;
+        let vertices = [];
+        let mode = 'move';
+        let dragging = false;
+        let selectedNode = null;
+        let edgeStart = null;
+        let deleteEdgeTimeout = null;
+
+        function resetCanvas() {
+            vertices = []; // menghapus semua vertices
+            draw(); // menggambar kembali canvas yang kosong
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function drawNode(x, y, label) {
+            ctx.beginPath();
+            // mengatur ukuran node menjadi 16
+            ctx.arc(x, y, 16, 0, Math.PI * 2); 
+            ctx.fillStyle = '#9F5C64';
+            ctx.fill();
+            ctx.closePath();
+            ctx.font = 'bold 14px Arial';
+            ctx.fillStyle = 'white';
+            // mengatur padding label
+            ctx.fillText(label, x - 6, y + 5); 
+        }
+
+        function drawEdge(startX, startY, endX, endY, value) {
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.strokeStyle = 'black';
+            ctx.stroke();
+            if (value !== undefined) {
+                ctx.font = '14px Arial';
+                ctx.fillStyle = 'black';
+                ctx.fillText(value, (startX + endX) / 2, (startY + endY) / 2);
+            }
+            ctx.closePath();
+        }
+
+        function draw() {
+            clearCanvas();
+            for (let i = 0; i < vertices.length; i++) {
+                for (let j = 0; j < vertices[i].edges.length; j++) {
+                    const endNode = vertices[vertices[i].edges[j]];
+                    drawEdge(
+                        vertices[i].x,
+                        vertices[i].y,
+                        endNode.x,
+                        endNode.y,
+                        vertices[i].edgeValues[j]
+                    );
+                }
+            }
+            for (let i = 0; i < vertices.length; i++) {
+                const label = drawNextNodeLabel(i);
+                drawNode(vertices[i].x, vertices[i].y, label);
+            }
+            if (edgeStart !== null && mode === 'edge') {
+                const {
+                    x,
+                    y
+                } = getCursorPosition(event);
+                drawEdge(vertices[edgeStart].x, vertices[edgeStart].y, x, y);
+            }
+        }
+
+        function getRandomPosition() {
+            const x = Math.floor(Math.random() * (canvas.width - 20)) + 10;
+            const y = Math.floor(Math.random() * (canvas.height - 20)) + 10;
+            return {
+                x,
+                y
+            };
+        }
+        
+        function addNode() {
+            const {
+                x,
+                y
+            } = getRandomPosition();
+            vertices.push({
+                x,
+                y,
+                edges: [],
+                edgeValues: []
+            });
+            draw();
+        }
+
+        function getCursorPosition(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            return {
+                x,
+                y
+            };
+        }
+
+        function checkClickedNode(cursorX, cursorY) {
+            for (let i = 0; i < vertices.length; i++) {
+                const distance = Math.sqrt((cursorX - vertices[i].x) ** 2 + (cursorY - vertices[i].y) ** 2);
+                if (distance <= 8) {
+                    return i;
+                }
+            }
+            return null;
+        }
+
+        canvas.addEventListener('mousedown', function(event) {
+            const {
+                x,
+                y
+            } = getCursorPosition(event);
+            selectedNode = checkClickedNode(x, y);
+            if (selectedNode !== null && mode === 'move') {
+                dragging = true;
+            } else if (mode === 'edge') {
+                edgeStart = checkClickedNode(x, y);
+            } else {
+                // untuk mengubah jarak dengan menekan edge
+                const clickedEdgeIndex = checkClickedEdge(x, y);
+                if (clickedEdgeIndex !== null) {
+                    notifChangeDistance('Change distance:',clickedEdgeIndex);
+                    
+                }
+            }
+        });
+
+        canvas.addEventListener('mousemove', function(event) {
+            if (dragging && selectedNode !== null && mode === 'move') {
+                const {
+                    x,
+                    y
+                } = getCursorPosition(event);
+                vertices[selectedNode].x = x;
+                vertices[selectedNode].y = y;
+                draw();
+            } else if (edgeStart !== null && mode === 'edge') {
+                draw();
+            }
+        });
+
+        canvas.addEventListener('mouseup', function(event) {
+            if (dragging && selectedNode !== null && mode === 'move') {
+                dragging = false;
+                selectedNode = null;
+            } else if (edgeStart !== null && mode === 'edge') {
+                const {
+                    x,
+                    y
+                } = getCursorPosition(event);
+                const endNode = checkClickedNode(x, y);
+                // mengatur agar indeks yang lebih tinggi tidak terhubung ke indeks yang lebih rendah
+                if (endNode !== null && edgeStart !== endNode && endNode > edgeStart) {
+                    notifInputDistance('Input distance:',edgeStart,endNode);
+                }
+                edgeStart = null;
+            }
+        });
+
+        function checkClickedEdge(cursorX, cursorY) {
+            for (let i = 0; i < vertices.length; i++) {
+                for (let j = 0; j < vertices[i].edges.length; j++) {
+                    const startX = vertices[i].x;
+                    const startY = vertices[i].y;
+                    const endNode = vertices[vertices[i].edges[j]];
+                    const endX = endNode.x;
+                    const endY = endNode.y;
+                    // Calculate distance from point to line (edge)
+                    const distance = Math.abs((endY - startY) * cursorX - (endX - startX) * cursorY + endX * startY - endY *
+                            startX) /
+                        Math.sqrt((endY - startY) ** 2 + (endX - startX) ** 2);
+                    // If the distance is within a threshold (e.g., 5 pixels), consider it a click on the edge
+                    if (distance <= 5) {
+                        return {
+                            from: i,
+                            to: j
+                        }; // Return the indices of the edge clicked
+                    }
+                }
+            }
+            return null;
+        }
+
+        function setMode(selectedMode) {
+            mode = selectedMode;
+            edgeStart = null;
+        }
+
+        function drawNextNodeLabel(index) {
+            const label = String.fromCharCode(index + 'A'.charCodeAt(0))
+            return label;
+        }
+        
+        function runDijkstra() {
+            const infinity = Number.MAX_SAFE_INTEGER;
+            const distance = [];
+            const visited = [];
+            const current = [];
+            const ver_edge = getDataFromCanvas();
+            const nodes = ver_edge.nodes;
+            const edges = ver_edge.edges;
+            const s = document.getElementById('startNode').value;
+            const e = document.getElementById('endNode').value;
+            startNode = s.toLowerCase().charCodeAt(0) - 97;
+            endNode = e.toLowerCase().charCodeAt(0) - 97;
+
+            //untuk meriksa node dan edge yang tersimpan dalam graf, jika tidak ada maka function berhenti dijalankan atau return null
+            if (nodes.length === 0 || edges.length === 0) {
+                return;
+            }
+            //inisialisasi jarak awal untuk setiap atribut
+            for (let i = 0; i < nodes.length; i++) {
+                distance[i] = infinity;
+                visited[i] = false;
+                current[i] = -1;
+            }
+            if (endNode > nodes.length-1 || startNode < 0) {
+                showNotif('Node Awal harus lebih dari 0 atau Node Akhir tidak boleh melebihi jumlah Node');
+                return;
+            }
+            //menetapkan nilai jarak untuk node awal (startNode) menjadi 0.
+            distance[startNode] = 0;
+            //iterasi algoritma dijkstra 
+            for (let count = 0; count < nodes.length - 1; count++) {
+                let u = -1;
+                //jika bertemu node dengan jarang yang lebih pendek maka akan disimpan ke atribut u
+                for (let i = 0; i < nodes.length; i++) {
+                    if (!visited[i] && (u === -1 || distance[i] < distance[u])) {
+                        u = i;
+                    }
+                }
+        
+                //memasukkan node u ke array visited
+                visited[u] = true;
+                
+                //memeriksa node yang terhubung dengan 'u' yang belum dikunjungi, jika jaraknya lebih pendek maka dia akan disimpan
+                for (let v = 0; v < nodes.length; v++) {
+                    if (!visited[v] && edges.some(edge => edge.source === u && edge.target === v)) {
+                        const edgeIndex = edges.findIndex(edge => edge.source === u && edge.target === v);
+                        const weight = edges[edgeIndex].weight;
+                        //memeriksa apakah masih ada jarak yang bernilai infinity dari node 'u'
+                        //mengupdate jarak yang nilainya lebih deket
+                        if (distance[u] !== infinity && distance[u] + weight < distance[v]) {
+                            distance[v] = distance[u] + weight;
+                            current[v] = u;
+                        }
+                    }
+                }
+            }
+            // menandai jalur terpendek pada tampilan graf
+            draw();
+            //array untuk menyimpan jalur terpendek
+            let path = [];
+            //membentuk jalur dari node akhir ke node sebelumnya hingga mencapai node awal dari jalur terpendeknya
+            for (let j = endNode; j !== -1; j = current[j]) {
+                path.push(j);
+            }
+            //urutan path dibalik agar urutannya dari node awal ke akhir
+            path.reverse();
+            // memberi warna highlight di jalur terpendek
+            ctx.strokeStyle = '#EB3991';
+            ctx.lineWidth = 3;
+            for (let k = 0; k < path.length - 1; k++) {
+                const node1 = path[k];
+                const node2 = path[k + 1];
+                const edge = edges.find(e =>
+                    (e.source === node1 && e.target === node2) || (e.source === node2 && e.target === node1)
+                );
+                const weight = edge ? edge.weight : '';
+                ctx.beginPath();
+                ctx.moveTo(nodes[node1].x, nodes[node1].y);
+                ctx.lineTo(nodes[node2].x, nodes[node2].y);
+                ctx.stroke();
+                ctx.font = '14px Arial';
+                ctx.fillStyle = 'black';
+                ctx.fillText(weight, (nodes[node1].x + nodes[node2].x) / 2, (nodes[node1].y + nodes[node2].y) / 2);
+            }
+        }
+
+        //untuk mendapatkan data dari canvas
+        function getDataFromCanvas() {
+            const nodes = [];
+            const edges = [];
+            // Mengambil data posisi node dari vertices
+            for (let i = 0; i < vertices.length; i++) {
+                const node = {
+                    id: i,
+                    x: vertices[i].x,
+                    y: vertices[i].y,
+                    edges: []
+                };
+                nodes.push(node);
+                // Mengambil data hubungan antar node dan bobot edge-nya dari edges
+                for (let j = 0; j < vertices[i].edges.length; j++) {
+                    const edge = {
+                        source: i, // nodeIndex1
+                        target: vertices[i].edges[j], // nodeIndex2
+                        weight: vertices[i].edgeValues[j] // weight
+                    };
+                    node.edges.push(edge);
+                    edges.push(edge);
+                }
+            }
+            return {
+                nodes,
+                edges
+            };
+        }
+        draw();
+    </script>
+</body>
+</html>
